@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "tesserae",
+  "description": "Portable, single-concept Claude Code rule modules, distributed as a plugin.",
+  "owner": {
+    "name": "Rich Inman"
+  },
+  "plugins": [
+    {
+      "name": "tesserae-core",
+      "source": ".",
+      "description": "Always-on portable engineering rules (universal + Python tiers), injected into every session via a SessionStart hook.",
+      "homepage": "https://github.com/rinman24/tesserae",
+      "repository": "https://github.com/rinman24/tesserae",
+      "license": "MIT",
+      "keywords": ["rules", "claude-md", "engineering-standards", "conventions", "python"]
+    }
+  ]
+}
