@@ -71,6 +71,30 @@ typing-python
 Tier-3 bindings still belong in the **consuming repo's** `.claude/local/` — the
 plugin ships only the portable principles.
 
+### Verifying the install
+
+After installing, open Claude Code in any project and confirm the hook fired:
+look for the injected context block titled `# Engineering rules (injected by
+tesserae-core)` — check it via `/context`, or just ask "what engineering rules
+are loaded?". For a deeper look, `claude --debug` shows the `SessionStart` hook
+registering and running `verify-and-inject.sh`.
+
+### Staying current
+
+`tesserae-core` declares no `version` (in neither `plugin.json` nor the
+marketplace entry), so its version resolves to the **git commit SHA** of the
+default branch. Every push to `main` is therefore a new version — maintainers
+never bump a number, and consumers can always reach the latest rules.
+
+How a consumer gets those updates:
+
+- **Automatic (recommended).** Enable auto-update for the marketplace —
+  `/plugin` → Marketplaces → select `tesserae` → "Enable auto-update". Claude
+  Code then refreshes the marketplace and pulls the newest commit at startup,
+  and prompts `/reload-plugins` to activate it. (Third-party marketplaces have
+  auto-update **off** by default, so this is opt-in per consumer.)
+- **Manual.** Run `/plugin marketplace update tesserae`, then `/reload-plugins`.
+
 ## Consuming via git subtree
 
 Vendor the modules into your repo at `.claude/rules/` so a fresh clone resolves every
