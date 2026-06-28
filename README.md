@@ -1,16 +1,37 @@
 <picture align="center">
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/rinman24/canon/main/docs/assets/canon_light.svg">
-  <img alt="canon logo" src="https://raw.githubusercontent.com/rinman24/canon/main/docs/assets/canon.svg">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/rinman24/canon/main/docs/assets/canon_light.svg">  <img alt="canon logo" src="https://raw.githubusercontent.com/rinman24/canon/main/docs/assets/canon.svg">
 </picture>
 
 -----------------
 
 Canon is a portable library of engineering principles — *architecture*, *git*, *testing*, *hygiene* — composed into a project's `CLAUDE.md` and injected into every coding session, so your agent follows the same principles in every repo.
 
-Small, single-concept rule modules for `CLAUDE.md`, designed to be shared across
-projects. A consuming repo's `CLAUDE.md` becomes a thin manifest of `@import` lines;
-the durable engineering principles live here, and the project-specific facts live in
-the consuming repo.
+## What Canon is
+
+A fixed point, assembled from parts. A *canon* is the authoritative body of
+principles a discipline is built on — durable, shared, versioned. The name carries
+the two ideas the project is built on: a **north star** the agent aligns to in every
+session, and a **whole composed from small, single-concept modules**. Authoritative
+without being loud — a reference you return to, not a tool that shouts.
+
+In practice that means small, single-concept rule modules for `CLAUDE.md`, designed
+to be shared across projects. A consuming repo's `CLAUDE.md` becomes a thin manifest
+of `@import` lines; the durable engineering principles live here, and the
+project-specific facts live in the consuming repo.
+
+## Find it on the Claude Code marketplace
+
+Canon ships as a Claude Code **plugin marketplace**. Add it and install the plugin:
+
+```bash
+/plugin marketplace add rinman24/canon
+/plugin install canon-core@canon
+```
+
+`canon-core` bundles every tier-1 (`universal/`) and tier-2 (`python/`) module and
+injects them at every session start. For verification, staying current, and the
+optional `.claude/canon.txt` manifest, see [Consuming via the plugin
+marketplace](#consuming-via-the-plugin-marketplace) below.
 
 ## Tiers
 
@@ -46,11 +67,10 @@ invariant that keeps this repo free of any consumer's specifics.
 
 ## Consuming via the plugin marketplace
 
-This repo is also a Claude Code **plugin marketplace**. Instead of vendoring the
-modules, a project can install them as a plugin — the rules are then injected
-into every session by a `SessionStart` hook, with no `@import` lines to maintain.
-
-Add the marketplace and install the plugin:
+Installing as a plugin (the [quick start](#find-it-on-the-claude-code-marketplace)
+above) is the path most projects want: instead of vendoring the modules, the rules
+are injected into every session by a `SessionStart` hook, with no `@import` lines to
+maintain.
 
 ```bash
 /plugin marketplace add rinman24/canon
@@ -181,3 +201,16 @@ so it can catch a missing plugin:
    every repo on that machine, checks the project's declared requirements, and
    warns if `canon-core` is not loaded — catching the gap in interactive
    sessions rather than only in CI.
+
+## Brand
+
+Canon's identity — mark, palette, type, and voice — is documented in the
+[Canon Brand Kit](docs/brand/Canon%20Brand%20Kit.html). The mark is a circle
+inscribed with a square centered on a single point: the ring is the canon that
+contains, the square is structure, the point is first principles. Voice is
+**precise, quiet, durable** — say the rule and the reason, authoritative without
+volume, written for the long term.
+
+-----------------
+
+*Canon — Brand Guidelines · v1.0 · 2026 — the principles your agent codes by.*
