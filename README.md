@@ -1,4 +1,4 @@
-# tesserae — portable Claude Code rule modules
+# canon — portable Claude Code rule modules
 
 Small, single-concept rule modules for `CLAUDE.md`, designed to be shared across
 projects. A consuming repo's `CLAUDE.md` becomes a thin manifest of `@import` lines;
@@ -46,22 +46,22 @@ into every session by a `SessionStart` hook, with no `@import` lines to maintain
 Add the marketplace and install the plugin:
 
 ```bash
-/plugin marketplace add rinman24/tesserae
-/plugin install tesserae-core@tesserae
+/plugin marketplace add rinman24/canon
+/plugin install canon-core@canon
 ```
 
-The `tesserae-core` plugin bundles every tier-1 (`universal/`) and tier-2
+The `canon-core` plugin bundles every tier-1 (`universal/`) and tier-2
 (`python/`) module. On each session start — and after `/clear` and compaction —
 the hook injects the bundled modules as context and warns loudly if anything is
 missing.
 
 Optionally declare which modules a project requires in
-`.claude/tesserae.txt` (one module name per line, `#` for comments). The hook
+`.claude/canon.txt` (one module name per line, `#` for comments). The hook
 verifies each is present in the installed bundle and emits a prominent warning
 block if not:
 
 ```
-# .claude/tesserae.txt
+# .claude/canon.txt
 architecture-closed
 git-semilinear
 dev-hygiene
@@ -75,13 +75,13 @@ plugin ships only the portable principles.
 
 After installing, open Claude Code in any project and confirm the hook fired:
 look for the injected context block titled `# Engineering rules (injected by
-tesserae-core)` — check it via `/context`, or just ask "what engineering rules
+canon-core)` — check it via `/context`, or just ask "what engineering rules
 are loaded?". For a deeper look, `claude --debug` shows the `SessionStart` hook
 registering and running `verify-and-inject.sh`.
 
 ### Staying current
 
-`tesserae-core` declares no `version` (in neither `plugin.json` nor the
+`canon-core` declares no `version` (in neither `plugin.json` nor the
 marketplace entry), so its version resolves to the **git commit SHA** of the
 default branch. Every push to `main` is therefore a new version — maintainers
 never bump a number, and consumers can always reach the latest rules.
@@ -89,11 +89,11 @@ never bump a number, and consumers can always reach the latest rules.
 How a consumer gets those updates:
 
 - **Automatic (recommended).** Enable auto-update for the marketplace —
-  `/plugin` → Marketplaces → select `tesserae` → "Enable auto-update". Claude
+  `/plugin` → Marketplaces → select `canon` → "Enable auto-update". Claude
   Code then refreshes the marketplace and pulls the newest commit at startup,
   and prompts `/reload-plugins` to activate it. (Third-party marketplaces have
   auto-update **off** by default, so this is opt-in per consumer.)
-- **Manual.** Run `/plugin marketplace update tesserae`, then `/reload-plugins`.
+- **Manual.** Run `/plugin marketplace update canon`, then `/reload-plugins`.
 
 ## Consuming via git subtree
 
@@ -101,16 +101,16 @@ Vendor the modules into your repo at `.claude/rules/` so a fresh clone resolves 
 `@import` with no install step:
 
 ```bash
-git remote add tesserae <this-repo-url>
-git fetch tesserae main
-git subtree add --prefix=.claude/rules tesserae main --squash
+git remote add canon <this-repo-url>
+git fetch canon main
+git subtree add --prefix=.claude/rules canon main --squash
 ```
 
 Take upstream updates with:
 
 ```bash
-git fetch tesserae main
-git subtree pull --prefix=.claude/rules tesserae main --squash
+git fetch canon main
+git subtree pull --prefix=.claude/rules canon main --squash
 ```
 
 **Linear-history hosts:** `git subtree` creates merge commits, which rebase-based PR
@@ -120,11 +120,11 @@ rebased PRs, vendor with a plain snapshot commit instead, keeping subtree-compat
 provenance trailers:
 
 ```bash
-git fetch tesserae main
+git fetch canon main
 SPLIT=$(git rev-parse FETCH_HEAD)
 git rm -rq .claude/rules 2>/dev/null || true
 git read-tree --prefix=.claude/rules -u FETCH_HEAD
-git commit -m "chore(rules): vendor tesserae at ${SPLIT:0:9}" \
+git commit -m "chore(rules): vendor canon at ${SPLIT:0:9}" \
   -m "git-subtree-dir: .claude/rules" \
   -m "git-subtree-split: ${SPLIT}"
 ```
@@ -154,7 +154,7 @@ A consuming `CLAUDE.md` then looks like:
 
 ## Enforcing that the rules are installed
 
-The `tesserae-core` SessionStart hook injects these rules and warns loudly
+The `canon-core` SessionStart hook injects these rules and warns loudly
 when a required module is missing. But a SessionStart hook **cannot block** a
 session, and it only runs when the plugin is already installed — so it covers
 "installed but broken," not "never installed." To make installation genuinely
@@ -172,5 +172,5 @@ so it can catch a missing plugin:
    machines you provision, drop a SessionStart hook into the user-level
    `~/.claude/settings.json` (e.g. via your dotfiles/bootstrap). It runs in
    every repo on that machine, checks the project's declared requirements, and
-   warns if `tesserae-core` is not loaded — catching the gap in interactive
+   warns if `canon-core` is not loaded — catching the gap in interactive
    sessions rather than only in CI.

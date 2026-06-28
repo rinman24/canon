@@ -1,12 +1,13 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
-  "name": "tesserae-core",
+  "name": "canon-core",
+  "displayName": "Canon Core",
   "description": "Always-on portable engineering rules (universal + Python tiers). A SessionStart hook injects the bundled rule modules into every session and warns loudly when a required module is missing.",
   "author": {
     "name": "Rich Inman"
   },
-  "homepage": "https://github.com/rinman24/tesserae",
-  "repository": "https://github.com/rinman24/tesserae",
+  "homepage": "https://github.com/rinman24/canon",
+  "repository": "https://github.com/rinman24/canon",
   "license": "MIT",
   "keywords": ["rules", "claude-md", "engineering-standards", "conventions", "python"]
 }

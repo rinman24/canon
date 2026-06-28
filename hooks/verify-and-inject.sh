@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# tesserae-core SessionStart hook: inject the bundled rule modules as
+# canon-core SessionStart hook: inject the bundled rule modules as
 # session context, and warn loudly if a required module is missing or the
 # install looks broken.
 #
@@ -28,16 +28,16 @@ done < <(find "$RULES_ROOT" -type f -name '*.md' ! -path '*/.claude-plugin/*' | 
 
 warnings=()
 if [ "${#MODULES[@]}" -eq 0 ]; then
-  warnings+=("No rule modules found under ${RULES_ROOT} — the tesserae-core install looks broken.")
+  warnings+=("No rule modules found under ${RULES_ROOT} — the canon-core install looks broken.")
 fi
 
 # --- Optional: per-project required-module manifest ------------------------
 # A consuming project may declare which modules it requires in:
-#   ${CLAUDE_PROJECT_DIR}/.claude/tesserae.txt   (one module name per line; # = comment)
+#   ${CLAUDE_PROJECT_DIR}/.claude/canon.txt   (one module name per line; # = comment)
 # Module name = the *.md basename without extension (e.g. architecture-closed).
 # For each required name, verify a matching module file is present in the bundle.
 project_dir="${CLAUDE_PROJECT_DIR:-$PWD}"
-manifest="${project_dir}/.claude/tesserae.txt"
+manifest="${project_dir}/.claude/canon.txt"
 if [ -f "$manifest" ]; then
   while IFS= read -r raw; do
     name="${raw%%#*}"
@@ -48,25 +48,25 @@ if [ -f "$manifest" ]; then
       case "$m" in */"$name".md) found=1; break ;; esac
     done
     if [ "$found" -eq 0 ]; then
-      warnings+=("Project requires rule module '${name}', but it is not present in the installed tesserae-core bundle.")
+      warnings+=("Project requires rule module '${name}', but it is not present in the installed canon-core bundle.")
     fi
   done < "$manifest"
 fi
 
 # --- Emit context (plain stdout is injected as SessionStart context) -------
 if [ "${#warnings[@]}" -gt 0 ]; then
-  echo "## ⚠️ REQUIRED TESSERAE RULES PROBLEM"
+  echo "## ⚠️ REQUIRED CANON RULES PROBLEM"
   echo
   echo "Claude may be operating WITHOUT this project's required engineering standards:"
   for w in "${warnings[@]}"; do echo "- ${w}"; done
   echo
   echo "Fix: install or repair the rules plugin, e.g.:"
-  echo '  /plugin install tesserae-core@tesserae'
+  echo '  /plugin install canon-core@canon'
   echo
-  printf 'tesserae-core: %s\n' "${warnings[@]}" >&2   # human-visible under --debug / on stderr
+  printf 'canon-core: %s\n' "${warnings[@]}" >&2   # human-visible under --debug / on stderr
 fi
 
-echo "# Engineering rules (injected by tesserae-core)"
+echo "# Engineering rules (injected by canon-core)"
 echo
 for f in ${MODULES[@]+"${MODULES[@]}"}; do
   echo "<!-- source: ${f#"$RULES_ROOT"/} -->"
