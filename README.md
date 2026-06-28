@@ -1,4 +1,11 @@
-# canon — portable Claude Code rule modules
+<picture align="center">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/rinman24/canon/main/docs/assets/canon_light.svg">
+  <img alt="canon logo" src="https://raw.githubusercontent.com/rinman24/canon/main/docs/assets/canon.svg">
+</picture>
+
+-----------------
+
+Canon is a portable library of engineering principles — *architecture*, *git*, *testing*, *hygiene* — composed into a project's `CLAUDE.md` and injected into every coding session, so your agent follows the same principles in every repo.
 
 Small, single-concept rule modules for `CLAUDE.md`, designed to be shared across
 projects. A consuming repo's `CLAUDE.md` becomes a thin manifest of `@import` lines;
