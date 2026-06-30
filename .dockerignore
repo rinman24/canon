@@ -1,0 +1,4 @@
+# The dev image does not COPY the repo in (it is bind-mounted at runtime), so this
+# only trims the build context sent to the daemon.
+.git
+**/.DS_Store

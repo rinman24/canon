@@ -1,0 +1,24 @@
+services:
+  canon:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      target: development
+    volumes:
+      # The repo, bind-mounted so edits on the VM are live in the container (and so the
+      # plugin you dogfood from /workspaces/canon reflects your working tree).
+      - ..:/workspaces/canon:cached
+      # Persist Claude Code auth + installed plugins across rebuilds. Scoped to .claude
+      # ONLY (not all of /home/dev) so it does not shadow the image-baked ~/.local
+      # (the Claude binary) or ~/.gitconfig. A fresh volume comes up EMPTY (creds are
+      # runtime, not image content) — re-auth once after the first recreate.
+      - canon_claude_home:/home/dev/.claude
+    # Keep the container alive; attach with VS Code Remote-Containers or `docker exec`.
+    command: sleep infinity
+    # Run docker-init (tini) as PID 1 to reap any orphaned children (e.g. the Claude
+    # background auto-updater) so they don't pile up as zombies under `sleep infinity`.
+    init: true
+
+volumes:
+  # Named so Claude auth/installed-plugins survive image rebuilds.
+  canon_claude_home:
