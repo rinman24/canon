@@ -55,6 +55,11 @@ a deliberate security boundary: a repo you check out cannot silently make your
 machine fetch and run code. Restart Claude Code afterward, because the
 `SessionStart` hook only registers at process startup (not on `/clear`).
 
+Running each repo in its own dev container, with nothing installed at the host
+level? See [Adopting Canon in dev containers](docs/adopting-in-dev-containers.md)
+for the activation wiring (entrypoint vs `postCreateCommand`) and a ready-made
+`setup-canon.sh`.
+
 ## Tiers
 
 | Tier | Lives in | Content |
@@ -232,6 +237,8 @@ so it can catch a missing plugin:
    rule plugin(s). Combined with branch protection, this makes a repo that
    "forgot to require the rules" **un-mergeable**. CI is enforced server-side
    and needs no per-developer setup, so it is the only truly unskippable gate.
+   Ready-made checks live in [`templates/ci/`](templates/ci/): a pytest module
+   and a language-agnostic `jq` script.
 
 2. **Once-per-machine tripwire (optional — for live dev sessions).** On
    machines you provision, drop a SessionStart hook into the user-level
