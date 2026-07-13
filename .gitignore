@@ -1,2 +1,6 @@
 # macOS
 .DS_Store
+
+# Python test byproducts (tests/ runs via pytest)
+__pycache__/
+.pytest_cache/
