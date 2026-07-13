@@ -1,0 +1,15 @@
+{
+  "extraKnownMarketplaces": {
+    "canon": {
+      "source": {
+        "source": "github",
+        "repo": "rinman24/canon",
+        "ref": "main"
+      },
+      "autoUpdate": false
+    }
+  },
+  "enabledPlugins": {
+    "canon-core@canon": true
+  }
+}

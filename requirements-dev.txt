@@ -1,0 +1,4 @@
+# Dev-only dependencies for this repo's own CI (tests/). This repo is not a
+# Python package — keep this file minimal.
+pytest==8.4.2
+PyYAML==6.0.2
