@@ -1,0 +1,7 @@
+# Rule modules this repo requires (one per line; # starts a comment).
+architecture-closed
+delivery-vertical-slice
+dev-hygiene
+git-semilinear
+testing-conventions
+worktree-isolation
