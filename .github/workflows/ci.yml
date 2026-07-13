@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  # Check 1 — the Claude CLI validates the plugin + marketplace manifests,
+  # hooks.json, and skill frontmatter. Offline, no API key.
+  plugin-validate:
+    name: Plugin validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Claude Code CLI
+        run: |
+          curl -fsSL https://claude.ai/install.sh | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: claude plugin validate
+        run: claude plugin validate .
+
+  # Check 2 — bash syntax + shellcheck over every tracked shell script.
+  # Enumerated via git ls-files so new scripts are auto-covered.
+  shell-lint:
+    name: Shell lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: bash -n (syntax)
+        run: git ls-files -z -- '*.sh' | xargs -0 -n1 bash -n
+      - name: shellcheck
+        run: git ls-files -z -- '*.sh' | xargs -0 shellcheck
+
+  # Check 3 — every repo-relative link target in tracked markdown must exist.
+  reference-integrity:
+    name: Reference integrity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: check-references
+        run: bash scripts/ci/check-references.sh
+
+  # Checks 4 + 5 — template behavior fixtures (both CI-template flavors,
+  # exercised verbatim against good/bad consumer trees) and the rule-module
+  # frontmatter lint. Together these run the whole tests/ suite.
+  python-checks:
+    name: Template fixtures + frontmatter lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dev dependencies
+        run: python -m pip install -r requirements-dev.txt
+      - name: Template behavior fixtures (tests/test_templates.py)
+        run: python -m pytest tests/test_templates.py -q
+      - name: Module frontmatter lint (tests/test_frontmatter.py)
+        run: python -m pytest tests/test_frontmatter.py -q
+
+  # Check 6 — release ≡ tag: a pushed v* tag must equal "v" + plugin.json
+  # version, or consumers pinned to the tag resolve the wrong version.
+  tag-version-guard:
+    name: Tag matches plugin.json version
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assert tag == v<plugin.json version>
+        run: |
+          version="$(jq -r .version .claude-plugin/plugin.json)"
+          if [ "$GITHUB_REF_NAME" != "v${version}" ]; then
+            echo "::error::Tag '${GITHUB_REF_NAME}' does not match plugin.json version 'v${version}'." \
+                 "Bump .claude-plugin/plugin.json (and marketplace metadata if needed) before tagging;" \
+                 "consumers pinned to this tag would otherwise keep a stale cached plugin."
+            exit 1
+          fi
+          echo "OK: tag ${GITHUB_REF_NAME} == v${version}"
