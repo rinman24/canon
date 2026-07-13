@@ -34,7 +34,9 @@ ref="$(src ref)"
 [ "$(jq -r ".enabledPlugins.\"$PLUGIN\"" "$SETTINGS")" = "true" ] \
     || fail "$PLUGIN must be enabled"
 
-declared="$(grep -vE '^[[:space:]]*(#|$)' "$CANON_TXT" | tr -d '[:space:]')"
+# Strip horizontal whitespace only — newlines must survive so `grep -x` can
+# match one module name per line (canon.txt's documented format).
+declared="$(grep -vE '^[[:space:]]*(#|$)' "$CANON_TXT" | tr -d ' \t\r')"
 for m in $REQUIRED_MODULES; do
     printf '%s\n' "$declared" | grep -qx "$m" || fail ".claude/canon.txt missing required module: $m"
 done
