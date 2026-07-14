@@ -31,18 +31,35 @@ if [ "${#MODULES[@]}" -eq 0 ]; then
   warnings+=("No rule modules found under ${RULES_ROOT} — the canon-core install looks broken.")
 fi
 
-# --- Optional: per-project required-module manifest ------------------------
-# A consuming project may declare which modules it requires in:
+# --- Optional: per-project module manifest (verify + narrow) ---------------
+# A consuming project may declare which modules it wants in:
 #   ${CLAUDE_PROJECT_DIR}/.claude/canon.txt   (one module name per line; # = comment)
 # Module name = the *.md basename without extension (e.g. architecture-closed).
-# For each required name, verify a matching module file is present in the bundle.
+# When present and resolving to a non-empty set of names, the manifest NARROWS
+# injection to those modules (still warning for any listed name absent from the
+# bundle). If it resolves to zero valid names we fall back to the full bundle
+# rather than stripping every rule — narrowing must never silently disarm canon.
+MANIFEST_REL=".claude/canon.txt"
 project_dir="${CLAUDE_PROJECT_DIR:-$PWD}"
-manifest="${project_dir}/.claude/canon.txt"
+manifest="${project_dir}/${MANIFEST_REL}"
+
+requested=()          # names read from canon.txt (present in bundle or not)
+manifest_present=0
 if [ -f "$manifest" ]; then
-  while IFS= read -r raw; do
+  manifest_present=1
+  while IFS= read -r raw || [ -n "$raw" ]; do
     name="${raw%%#*}"
     name="$(printf '%s' "$name" | xargs 2>/dev/null)"   # trim whitespace
     [ -z "$name" ] && continue
+    requested+=("$name")
+  done < "$manifest"
+fi
+
+# Verify each requested name against the bundle, and build the injected subset
+# in the existing sorted bundle order (NOT canon.txt order).
+INJECT=()
+if [ "$manifest_present" -eq 1 ] && [ "${#requested[@]}" -gt 0 ]; then
+  for name in ${requested[@]+"${requested[@]}"}; do
     found=0
     for m in ${MODULES[@]+"${MODULES[@]}"}; do
       case "$m" in */"$name".md) found=1; break ;; esac
@@ -50,7 +67,45 @@ if [ -f "$manifest" ]; then
     if [ "$found" -eq 0 ]; then
       warnings+=("Project requires rule module '${name}', but it is not present in the installed canon-core bundle.")
     fi
-  done < "$manifest"
+  done
+  for m in ${MODULES[@]+"${MODULES[@]}"}; do
+    stem="$(basename "$m" .md)"
+    for name in ${requested[@]+"${requested[@]}"}; do
+      if [ "$stem" = "$name" ]; then
+        INJECT+=("$m")
+        break
+      fi
+    done
+  done
+fi
+
+# Decide what actually gets injected: narrowed subset, or full-bundle fallback.
+narrowed=0
+fallback=0
+if [ "$manifest_present" -eq 1 ] && [ "${#INJECT[@]}" -gt 0 ]; then
+  narrowed=1
+else
+  if [ "$manifest_present" -eq 1 ]; then
+    fallback=1
+    warnings+=("${MANIFEST_REL} selected 0 valid modules — injecting the full bundle instead of stripping all rules.")
+  fi
+  INJECT=(${MODULES[@]+"${MODULES[@]}"})
+fi
+
+# --- Build the injection-manifest summary line -----------------------------
+total="${#MODULES[@]}"
+count="${#INJECT[@]}"
+stems=""
+for m in ${INJECT[@]+"${INJECT[@]}"}; do
+  s="$(basename "$m" .md)"
+  if [ -z "$stems" ]; then stems="$s"; else stems="${stems}, ${s}"; fi
+done
+if [ "$narrowed" -eq 1 ]; then
+  summary="injected ${count}/${total} modules (narrowed by ${MANIFEST_REL}): ${stems}"
+elif [ "$fallback" -eq 1 ]; then
+  summary="injected ${count}/${total} modules (fallback: ${MANIFEST_REL} selected 0 valid modules): ${stems}"
+else
+  summary="injected ${count}/${total} modules (full bundle; no ${MANIFEST_REL}): ${stems}"
 fi
 
 # --- Emit context (plain stdout is injected as SessionStart context) -------
@@ -66,9 +121,12 @@ if [ "${#warnings[@]}" -gt 0 ]; then
   printf 'canon-core: %s\n' "${warnings[@]}" >&2   # human-visible under --debug / on stderr
 fi
 
+printf 'canon-core: %s\n' "$summary" >&2            # inspectable under --debug / on stderr
+
 echo "# Engineering rules (injected by canon-core)"
+echo "<!-- canon-core: ${summary} -->"
 echo
-for f in ${MODULES[@]+"${MODULES[@]}"}; do
+for f in ${INJECT[@]+"${INJECT[@]}"}; do
   echo "<!-- source: ${f#"$RULES_ROOT"/} -->"
   cat "$f"
   echo

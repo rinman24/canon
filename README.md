@@ -109,10 +109,8 @@ The `canon-core` plugin bundles every tier-1 (`universal/`) and tier-2
 the hook injects the bundled modules as context and warns loudly if anything is
 missing.
 
-Optionally declare which modules a project requires in
-`.claude/canon.txt` (one module name per line, `#` for comments). The hook
-verifies each is present in the installed bundle and emits a prominent warning
-block if not:
+Optionally declare which modules a project wants in
+`.claude/canon.txt` (one module name per line, `#` for comments):
 
 ```
 # .claude/canon.txt
@@ -121,6 +119,20 @@ git-semilinear
 dev-hygiene
 typing-python
 ```
+
+When present, the manifest plays two roles. It **narrows** injection to the
+listed modules — only those are injected, in the bundle's own sorted order — so
+a project can opt into a subset rather than the whole bundle. It still
+**verifies**: any listed name absent from the installed bundle raises a
+prominent warning block. As a safety fallback, a manifest that resolves to zero
+valid modules (empty, only comments, or every name missing) injects the *full*
+bundle with a warning, rather than silently stripping every rule. When the file
+is absent, the full bundle is injected — the non-breaking default.
+
+Either way the hook emits a one-line injection manifest (an HTML comment atop
+the injected block, mirrored to stderr under `claude --debug`) recording how
+many modules were injected and why, e.g.
+`canon-core: injected 4/7 modules (narrowed by .claude/canon.txt): ...`.
 
 Tier-3 bindings still belong in the **consuming repo's** `.claude/local/` — the
 plugin ships only the portable principles.
