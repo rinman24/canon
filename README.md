@@ -28,8 +28,10 @@ Canon ships as a Claude Code **plugin marketplace**. Add it and install the plug
 /plugin install canon-core@canon
 ```
 
-`canon-core` bundles every tier-1 (`universal/`) and tier-2 (`python/`) module and
-injects them at every session start. For verification, staying current, and the
+`canon-core` bundles every tier-1 (`universal/`) and tier-2 (`python/`) module.
+At every session start it injects the always-on tier-1 modules, plus each family
+tier only when it detects the project is that kind (e.g. `python/` when the repo
+has Python markers). For detection, verification, staying current, and the
 optional `.claude/canon.txt` manifest, see [Consuming via the plugin
 marketplace](#consuming-via-the-plugin-marketplace) below.
 
@@ -62,11 +64,11 @@ for the activation wiring (entrypoint vs `postCreateCommand`) and a ready-made
 
 ## Tiers
 
-| Tier | Lives in | Content |
-|---|---|---|
-| 1 — universal | `universal/` | Language-agnostic principles (architecture, git, hygiene, testing, delivery, worktrees) |
-| 2 — family | `python/` (and future siblings) | Principles portable within one language ecosystem |
-| 3 — binding | the **consuming repo's** `.claude/local/` | Project/org-specific facts: directory trees, CI commands, env paths, host specifics |
+| Tier | Lives in | Content | Injected |
+|---|---|---|---|
+| 1 — universal | `universal/` | Language-agnostic principles (architecture, git, hygiene, testing, delivery, worktrees) | Always |
+| 2 — family | `python/` (and future siblings) | Principles portable within one language ecosystem | Only when the project is detected as that family |
+| 3 — binding | the **consuming repo's** `.claude/local/` | Project/org-specific facts: directory trees, CI commands, env paths, host specifics | Owned by the consuming repo (not shipped) |
 
 Principles (tiers 1–2) carry **no project identity** — no project paths, no org tooling,
 no host names. Anything project-specific belongs in a binding, authored and owned by the
@@ -106,11 +108,22 @@ maintain.
 
 The `canon-core` plugin bundles every tier-1 (`universal/`) and tier-2
 (`python/`) module. On each session start — and after `/clear` and compaction —
-the hook injects the bundled modules as context and warns loudly if anything is
+the hook injects the modules the project needs and warns loudly if anything is
 missing.
 
-Optionally declare which modules a project wants in
-`.claude/canon.txt` (one module name per line, `#` for comments):
+**Default resolution (no `canon.txt`).** Tier-1 `universal/` modules are
+**always** injected. Each family tier is injected **only when the project is
+detected as that kind** — `python/` when the repo carries any Python marker
+(`pyproject.toml`, `setup.py`, `setup.cfg`, `Pipfile`, `poetry.lock`,
+`requirements*.txt`, `tox.ini`, or any `*.py`, found at the root or within a
+shallow search). A family tier that has no detection rule yet is injected by
+default — canon fails toward inclusion and never silently drops a rule it can't
+gate. This narrows the always-on surface to what a project actually needs
+without any per-repo configuration.
+
+**`canon.txt` is authoritative.** Optionally declare exactly which modules a
+project wants in `.claude/canon.txt` (one module name per line, `#` for
+comments):
 
 ```
 # .claude/canon.txt
@@ -120,22 +133,42 @@ dev-hygiene
 typing-python
 ```
 
-When present, the manifest plays two roles. It **narrows** injection to the
-listed modules — only those are injected, in the bundle's own sorted order — so
-a project can opt into a subset rather than the whole bundle. It still
-**verifies**: any listed name absent from the installed bundle raises a
-prominent warning block. As a safety fallback, a manifest that resolves to zero
-valid modules (empty, only comments, or every name missing) injects the *full*
-bundle with a warning, rather than silently stripping every rule. When the file
-is absent, the full bundle is injected — the non-breaking default.
+When present with at least one valid module, the manifest plays two roles. It
+**narrows** injection to exactly the listed modules — only those, in the
+bundle's own sorted order — and **wins over detection**: an explicit manifest is
+your deliberate choice, so universal is not force-added and family tiers are not
+auto-detected. This is the escape hatch — a `canon.txt` listing every module
+reproduces the pre-v2.0 inject-everything behavior. It still **verifies**: any
+listed name absent from the installed bundle raises a prominent warning block.
+As a safety fallback, a manifest that resolves to zero valid modules (empty,
+only comments, or every name missing) falls back to the default resolution
+above (universal always-on + detected families) with a warning, rather than
+silently stripping every rule.
 
 Either way the hook emits a one-line injection manifest (an HTML comment atop
 the injected block, mirrored to stderr under `claude --debug`) recording how
-many modules were injected and why, e.g.
-`canon-core: injected 4/7 modules (narrowed by .claude/canon.txt): ...`.
+many modules were injected and why — including, per family tier, whether it was
+detected, skipped, or injected by default, e.g.
+
+```
+canon-core: injected 3/4 modules (defaults: universal always-on; python detected via pyproject.toml): architecture-closed, dev-hygiene, git-semilinear
+canon-core: injected 2/4 modules (defaults: universal always-on; python skipped — no Python project markers): architecture-closed, git-semilinear
+canon-core: injected 4/7 modules (narrowed by .claude/canon.txt): ...
+```
 
 Tier-3 bindings still belong in the **consuming repo's** `.claude/local/` — the
 plugin ships only the portable principles.
+
+### Migrating to v2.0
+
+v2.0 is a breaking change to the **default** only: with no `.claude/canon.txt`,
+family tiers (e.g. `python/`) now inject only when the project is detected as
+that family, whereas v1.x injected the whole bundle. Tier-1 `universal/` is
+unaffected — still always-on. Consumers pin canon by tag with
+`autoUpdate: false`, so this lands only when you deliberately bump the pinned
+`ref`. To restore the old inject-everything behavior, add a `.claude/canon.txt`
+listing every module you want — an explicit manifest is authoritative and
+bypasses detection.
 
 ### Verifying the install
 

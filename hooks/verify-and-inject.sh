@@ -35,10 +35,18 @@ fi
 # A consuming project may declare which modules it wants in:
 #   ${CLAUDE_PROJECT_DIR}/.claude/canon.txt   (one module name per line; # = comment)
 # Module name = the *.md basename without extension (e.g. architecture-closed).
-# When present and resolving to a non-empty set of names, the manifest NARROWS
-# injection to those modules (still warning for any listed name absent from the
-# bundle). If it resolves to zero valid names we fall back to the full bundle
-# rather than stripping every rule — narrowing must never silently disarm canon.
+# When present and resolving to a non-empty set of names, the manifest is
+# AUTHORITATIVE: it NARROWS injection to exactly those modules (still warning for
+# any listed name absent from the bundle) and WINS over tier detection — an
+# explicit manifest is the user's deliberate choice, so universal is not
+# force-added and detection is not applied. A canon.txt listing every module
+# therefore reproduces the pre-v2.0 inject-everything behavior.
+#
+# When canon.txt is ABSENT (or resolves to zero valid names) we use the v2.0
+# DEFAULT resolution instead of the full bundle: tier-1 `universal/` modules are
+# always injected, and each family tier (e.g. `python/`) is injected only when
+# the consuming project is DETECTED as that kind of project (see the detection
+# table below). This narrows the always-on surface to what the project needs.
 MANIFEST_REL=".claude/canon.txt"
 project_dir="${CLAUDE_PROJECT_DIR:-$PWD}"
 manifest="${project_dir}/${MANIFEST_REL}"
@@ -79,17 +87,108 @@ if [ "$manifest_present" -eq 1 ] && [ "${#requested[@]}" -gt 0 ]; then
   done
 fi
 
-# Decide what actually gets injected: narrowed subset, or full-bundle fallback.
+# --- Tier detection (v2.0 default resolution) ------------------------------
+# A module's tier == the name of its parent directory (universal/, python/, …),
+# which equals its frontmatter `tier:` by repo invariant — so we infer the tier
+# from the directory and never parse frontmatter here.
+#
+# DETECTION TABLE — keyed by family tier name. To gate a NEW family (e.g. rust,
+# node), add a `case` arm to detect_family below; that is the whole change.
+# Contract of detect_family "<tier>":
+#   sets DETECT_RESULT = inject | skip
+#   sets DETECT_REASON = human-readable clause for the injection manifest
+# An unknown family tier with NO arm falls to the default `*)` branch and is
+# injected BY DEFAULT — we fail toward inclusion and never silently drop a rule
+# we don't know how to gate; the manifest records that it was an ungated tier.
+
+# Detect a Python project under $project_dir. Checks the project root first
+# (fast path), then a bounded shallow search (maxdepth 3, stop at first hit).
+# On success sets PY_SIGNAL to the marker that matched; returns 0/1.
+python_project_detected() {
+  PY_SIGNAL=""
+  # Root-level marker files, in priority order (deterministic signal name).
+  for _f in pyproject.toml setup.py setup.cfg Pipfile poetry.lock tox.ini; do
+    if [ -f "${project_dir}/${_f}" ]; then PY_SIGNAL="$_f"; return 0; fi
+  done
+  for _f in "${project_dir}"/requirements*.txt; do
+    if [ -f "$_f" ]; then PY_SIGNAL="$(basename "$_f")"; return 0; fi
+  done
+  # Bounded shallow search for nested markers or any *.py file.
+  _hit="$(find "$project_dir" -maxdepth 3 \( \
+      -name pyproject.toml -o -name setup.py -o -name setup.cfg \
+      -o -name Pipfile -o -name poetry.lock -o -name tox.ini \
+      -o -name 'requirements*.txt' -o -name '*.py' \) -print 2>/dev/null \
+    | head -n 1)"
+  if [ -n "$_hit" ]; then PY_SIGNAL="$(basename "$_hit")"; return 0; fi
+  return 1
+}
+
+detect_family() {
+  _tier="$1"
+  case "$_tier" in
+    python)
+      if python_project_detected; then
+        DETECT_RESULT="inject"; DETECT_REASON="python detected via ${PY_SIGNAL}"
+      else
+        DETECT_RESULT="skip"; DETECT_REASON="python skipped — no Python project markers"
+      fi
+      ;;
+    *)
+      # No detection rule for this family tier — inject by default.
+      DETECT_RESULT="inject"
+      DETECT_REASON="${_tier} injected by default — no detection rule"
+      ;;
+  esac
+}
+
+# Decide what actually gets injected: authoritative narrow, or v2.0 default.
 narrowed=0
 fallback=0
+defaults_desc=""
 if [ "$manifest_present" -eq 1 ] && [ "${#INJECT[@]}" -gt 0 ]; then
   narrowed=1
 else
   if [ "$manifest_present" -eq 1 ]; then
     fallback=1
-    warnings+=("${MANIFEST_REL} selected 0 valid modules — injecting the full bundle instead of stripping all rules.")
+    warnings+=("${MANIFEST_REL} selected 0 valid modules — falling back to canon defaults (universal always-on; family tiers only when detected) instead of stripping all rules.")
   fi
-  INJECT=(${MODULES[@]+"${MODULES[@]}"})
+
+  # Collect the distinct family (non-universal) tiers in sorted bundle order,
+  # then run detection once per tier (parallel arrays; bash 3.2 has no maps).
+  FAM_TIERS=(); FAM_RESULT=(); FAM_REASON=()
+  for m in ${MODULES[@]+"${MODULES[@]}"}; do
+    t="$(basename "$(dirname "$m")")"
+    [ "$t" = "universal" ] && continue
+    seen=0
+    for x in ${FAM_TIERS[@]+"${FAM_TIERS[@]}"}; do
+      [ "$x" = "$t" ] && { seen=1; break; }
+    done
+    [ "$seen" -eq 0 ] && FAM_TIERS+=("$t")
+  done
+  for t in ${FAM_TIERS[@]+"${FAM_TIERS[@]}"}; do
+    detect_family "$t"
+    FAM_RESULT+=("$DETECT_RESULT")
+    FAM_REASON+=("$DETECT_REASON")
+  done
+
+  # Build the injected set: universal always; each family only if detected.
+  INJECT=()
+  for m in ${MODULES[@]+"${MODULES[@]}"}; do
+    t="$(basename "$(dirname "$m")")"
+    if [ "$t" = "universal" ]; then INJECT+=("$m"); continue; fi
+    i=0; res="inject"
+    for x in ${FAM_TIERS[@]+"${FAM_TIERS[@]}"}; do
+      if [ "$x" = "$t" ]; then res="${FAM_RESULT[$i]}"; break; fi
+      i=$((i + 1))
+    done
+    [ "$res" = "inject" ] && INJECT+=("$m")
+  done
+
+  # Compose the per-tier "defaults" clause for the manifest line.
+  defaults_desc="universal always-on"
+  for reason in ${FAM_REASON[@]+"${FAM_REASON[@]}"}; do
+    defaults_desc="${defaults_desc}; ${reason}"
+  done
 fi
 
 # --- Build the injection-manifest summary line -----------------------------
@@ -103,9 +202,9 @@ done
 if [ "$narrowed" -eq 1 ]; then
   summary="injected ${count}/${total} modules (narrowed by ${MANIFEST_REL}): ${stems}"
 elif [ "$fallback" -eq 1 ]; then
-  summary="injected ${count}/${total} modules (fallback: ${MANIFEST_REL} selected 0 valid modules): ${stems}"
+  summary="injected ${count}/${total} modules (fallback: ${MANIFEST_REL} selected 0 valid modules — using defaults: ${defaults_desc}): ${stems}"
 else
-  summary="injected ${count}/${total} modules (full bundle; no ${MANIFEST_REL}): ${stems}"
+  summary="injected ${count}/${total} modules (defaults: ${defaults_desc}): ${stems}"
 fi
 
 # --- Emit context (plain stdout is injected as SessionStart context) -------

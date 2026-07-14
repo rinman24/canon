@@ -8,13 +8,24 @@ inspectable summary line to both stdout (HTML comment) and stderr.
 Each test builds a throwaway fake plugin bundle (``CLAUDE_PLUGIN_ROOT``) with a
 couple of ``universal/*.md`` modules and one ``python/*.md`` module, plus a fake
 consuming project (``CLAUDE_PROJECT_DIR``), then runs the *real* hook via a
-``bash`` subprocess and asserts on stdout/stderr. Covered:
+``bash`` subprocess and asserts on stdout/stderr.
 
-* no manifest        -> full bundle injected; summary reports the full bundle;
+The v2.0 default (no canon.txt) resolution: tier-1 ``universal/`` modules are
+always injected; every family tier (e.g. ``python/``) is injected only when the
+project is DETECTED as that kind of project. An unknown family tier with no
+detection rule is injected by default. A present canon.txt with >= 1 valid
+module remains AUTHORITATIVE — it narrows to exactly those modules and wins over
+detection. Covered:
+
+* no manifest, non-Python project -> universal only (python skipped);
+* no manifest, Python project     -> universal + python (detected via marker);
 * subset manifest    -> only the listed modules injected (excluded content and
   its ``source:`` comment are ABSENT), summary reports the narrowed count;
+* authoritative wins -> a manifest listing a family module injects it even when
+  the project is not detected as that family;
 * unknown name       -> warning emitted for the missing module;
-* zero-valid manifest -> fallback to the full bundle + a fallback warning;
+* zero-valid manifest -> fallback to the v2.0 default set + a fallback warning;
+* unknown family tier -> injected by default with a "no detection rule" note;
 * every case exits 0 (SessionStart hooks must never gate the session).
 """
 
@@ -75,21 +86,71 @@ def _write_manifest(project: Path, body: str) -> None:
     (claude / "canon.txt").write_text(body, encoding="utf-8")
 
 
-def test_no_manifest_injects_full_bundle(tmp_path: Path) -> None:
-    """No canon.txt -> every module injected; summary reports the full bundle."""
+def _write_module(root: Path, tier: str, stem: str, marker: str) -> None:
+    """Write a single valid rule module under ``root/tier/stem.md``."""
+    tier_dir: Path = root / tier
+    tier_dir.mkdir(parents=True, exist_ok=True)
+    (tier_dir / f"{stem}.md").write_text(
+        f"---\n"
+        f"module: {stem}\n"
+        f"tier: {tier}\n"
+        f"summary: Test module {stem}.\n"
+        f"requires: []\n"
+        f"---\n\n"
+        f"# {stem}\n\n"
+        f"{marker}\n",
+        encoding="utf-8",
+    )
+
+
+# Universal stems, used repeatedly to assert the always-on tier-1 surface.
+UNIVERSAL_MARKERS: list[str] = [
+    marker for _, (tier, marker) in BUNDLE.items() if tier == "universal"
+]
+
+
+def test_no_manifest_non_python_injects_universal_only(tmp_path: Path) -> None:
+    """No canon.txt + non-Python project -> universal only; python skipped."""
     bundle: Path = tmp_path / "bundle"
     project: Path = tmp_path / "project"
     _make_bundle(bundle)
-    project.mkdir()
+    project.mkdir()  # empty project: no Python markers
 
     result = _run(bundle, project)
 
     assert result.returncode == 0, result.stderr
-    for _, marker in BUNDLE.values():
-        assert marker in result.stdout, f"{marker} missing from full-bundle injection"
-    summary: str = f"injected {len(BUNDLE)}/{len(BUNDLE)} modules (full bundle"
-    assert summary in result.stdout, result.stdout
-    assert summary in result.stderr, result.stderr
+    for marker in UNIVERSAL_MARKERS:
+        assert marker in result.stdout, f"{marker} missing from universal injection"
+    # The python module is gated out and its content must be absent.
+    assert BUNDLE["typing-python"][1] not in result.stdout
+    assert "python/typing-python.md" not in result.stdout
+    # 2 of 3 injected; manifest reports the default composition + skip reason.
+    assert f"injected 2/{len(BUNDLE)} modules (defaults:" in result.stdout
+    assert "universal always-on" in result.stdout
+    assert "python skipped — no Python project markers" in result.stdout
+    assert "python skipped — no Python project markers" in result.stderr
+
+
+def test_no_manifest_python_project_injects_universal_and_python(
+    tmp_path: Path,
+) -> None:
+    """No canon.txt + a Python project -> universal + python (detected)."""
+    bundle: Path = tmp_path / "bundle"
+    project: Path = tmp_path / "project"
+    _make_bundle(bundle)
+    project.mkdir()
+    (project / "pyproject.toml").write_text("[project]\nname='x'\n", encoding="utf-8")
+
+    result = _run(bundle, project)
+
+    assert result.returncode == 0, result.stderr
+    for marker in UNIVERSAL_MARKERS:
+        assert marker in result.stdout
+    assert BUNDLE["typing-python"][1] in result.stdout
+    assert "python/typing-python.md" in result.stdout
+    assert f"injected {len(BUNDLE)}/{len(BUNDLE)} modules (defaults:" in result.stdout
+    assert "python detected via pyproject.toml" in result.stdout
+    assert "python detected via pyproject.toml" in result.stderr
 
 
 def test_manifest_subset_narrows_injection(tmp_path: Path) -> None:
@@ -154,36 +215,123 @@ def test_manifest_unknown_name_warns(tmp_path: Path) -> None:
     assert f"injected 1/{len(BUNDLE)} modules (narrowed by" in result.stdout
 
 
-def test_manifest_zero_valid_falls_back_to_full_bundle(tmp_path: Path) -> None:
-    """Comments-only manifest -> full bundle injected + fallback warning."""
+def test_manifest_zero_valid_falls_back_to_defaults(tmp_path: Path) -> None:
+    """Comments-only manifest -> v2.0 default set injected + fallback warning."""
     bundle: Path = tmp_path / "bundle"
     project: Path = tmp_path / "project"
     _make_bundle(bundle)
-    project.mkdir()
+    project.mkdir()  # non-Python project
     _write_manifest(project, "# only comments\n#architecture-closed\n\n")
 
     result = _run(bundle, project)
 
     assert result.returncode == 0, result.stderr
-    for _, marker in BUNDLE.values():
+    # Fallback yields the DEFAULT set (universal only — no Python markers here).
+    for marker in UNIVERSAL_MARKERS:
         assert marker in result.stdout, f"{marker} missing from fallback injection"
-    assert "selected 0 valid modules" in result.stdout  # fallback warning
+    assert BUNDLE["typing-python"][1] not in result.stdout
+    assert "selected 0 valid modules" in result.stdout  # fallback warning still fires
     assert "selected 0 valid modules" in result.stderr
-    assert f"injected {len(BUNDLE)}/{len(BUNDLE)} modules (fallback" in result.stdout
+    assert f"injected 2/{len(BUNDLE)} modules (fallback" in result.stdout
+    assert "using defaults:" in result.stdout
 
 
-def test_manifest_all_missing_falls_back_to_full_bundle(tmp_path: Path) -> None:
-    """Every listed name missing -> full bundle fallback, not an empty injection."""
+def test_manifest_all_missing_falls_back_to_defaults(tmp_path: Path) -> None:
+    """Every listed name missing -> v2.0 default set fallback, not an empty inject."""
     bundle: Path = tmp_path / "bundle"
     project: Path = tmp_path / "project"
     _make_bundle(bundle)
-    project.mkdir()
+    project.mkdir()  # non-Python project
     _write_manifest(project, "nope-one\nnope-two\n")
 
     result = _run(bundle, project)
 
     assert result.returncode == 0, result.stderr
-    for _, marker in BUNDLE.values():
+    for marker in UNIVERSAL_MARKERS:
         assert marker in result.stdout
+    assert BUNDLE["typing-python"][1] not in result.stdout
     assert "selected 0 valid modules" in result.stdout
-    assert f"injected {len(BUNDLE)}/{len(BUNDLE)} modules (fallback" in result.stdout
+    assert f"injected 2/{len(BUNDLE)} modules (fallback" in result.stdout
+
+
+def test_detection_via_pyproject_injects_python(tmp_path: Path) -> None:
+    """No canon.txt + pyproject.toml marker -> python module injected."""
+    bundle: Path = tmp_path / "bundle"
+    project: Path = tmp_path / "project"
+    _make_bundle(bundle)
+    project.mkdir()
+    (project / "pyproject.toml").write_text("[project]\n", encoding="utf-8")
+
+    result = _run(bundle, project)
+
+    assert result.returncode == 0, result.stderr
+    assert BUNDLE["typing-python"][1] in result.stdout
+    assert "python detected via pyproject.toml" in result.stdout
+
+
+def test_detection_via_py_file_injects_python(tmp_path: Path) -> None:
+    """A stray *.py file (no marker file) still detects a Python project."""
+    bundle: Path = tmp_path / "bundle"
+    project: Path = tmp_path / "project"
+    _make_bundle(bundle)
+    project.mkdir()
+    (project / "app.py").write_text("print('hi')\n", encoding="utf-8")
+
+    result = _run(bundle, project)
+
+    assert result.returncode == 0, result.stderr
+    assert BUNDLE["typing-python"][1] in result.stdout
+    assert "python detected via app.py" in result.stdout
+
+
+def test_detection_negative_skips_python(tmp_path: Path) -> None:
+    """No canon.txt + empty project -> python skipped, universal injected."""
+    bundle: Path = tmp_path / "bundle"
+    project: Path = tmp_path / "project"
+    _make_bundle(bundle)
+    project.mkdir()
+
+    result = _run(bundle, project)
+
+    assert result.returncode == 0, result.stderr
+    for marker in UNIVERSAL_MARKERS:
+        assert marker in result.stdout
+    assert BUNDLE["typing-python"][1] not in result.stdout
+    assert "python skipped — no Python project markers" in result.stdout
+
+
+def test_manifest_authoritative_wins_over_detection(tmp_path: Path) -> None:
+    """canon.txt listing only a family module injects it despite no detection."""
+    bundle: Path = tmp_path / "bundle"
+    project: Path = tmp_path / "project"
+    _make_bundle(bundle)
+    project.mkdir()  # non-Python project — detection would skip python
+    _write_manifest(project, "typing-python\n")
+
+    result = _run(bundle, project)
+
+    assert result.returncode == 0, result.stderr
+    # Explicit manifest wins: python injected, universal NOT force-added.
+    assert BUNDLE["typing-python"][1] in result.stdout
+    for marker in UNIVERSAL_MARKERS:
+        assert marker not in result.stdout
+    assert f"injected 1/{len(BUNDLE)} modules (narrowed by" in result.stdout
+
+
+def test_unknown_family_tier_injected_by_default(tmp_path: Path) -> None:
+    """A family tier with no detection rule is injected by default, and said so."""
+    bundle: Path = tmp_path / "bundle"
+    project: Path = tmp_path / "project"
+    # Build an inline bundle: one universal + one module under an unknown tier.
+    _write_module(bundle, "universal", "architecture-closed", "ARCH_MARKER")
+    _write_module(bundle, "rust", "borrow-checker", "BORROW_CHECKER_MARKER")
+    project.mkdir()  # not a Rust project, but there is no rule to gate on
+
+    result = _run(bundle, project)
+
+    assert result.returncode == 0, result.stderr
+    assert "ARCH_MARKER" in result.stdout
+    assert "BORROW_CHECKER_MARKER" in result.stdout
+    assert "rust injected by default — no detection rule" in result.stdout
+    assert "rust injected by default — no detection rule" in result.stderr
+    assert "injected 2/2 modules (defaults:" in result.stdout
